@@ -53,6 +53,7 @@ export default function CreateListModal({ open, onClose }: { open: boolean; onCl
   const [micSupported, setMicSupported] = useState(false);
   const [micError, setMicError] = useState<string | null>(null);
   const recognitionRef = useRef<any>(null);
+  const processedResultCountRef = useRef(0);
   const { addItem } = useCart();
 
   useEffect(() => {
@@ -72,17 +73,30 @@ export default function CreateListModal({ open, onClose }: { open: boolean; onCl
     }
 
     setMicError(null);
+    processedResultCountRef.current = 0;
     const recognition = new SpeechRecognition();
     recognition.lang = "en-IN";
     recognition.continuous = true;
     recognition.interimResults = true;
     recognition.onresult = (event: any) => {
-      let finalTranscript = "";
-      for (let i = event.resultIndex; i < event.results.length; i++) {
-        if (event.results[i].isFinal) finalTranscript += event.results[i][0].transcript + " ";
+      // Each spoken phrase (separated by a pause) becomes its own final
+      // result — put each on its own line so "chini" then "atta" parse as
+      // two separate items instead of getting glued together on one line.
+      // Track our own forward-only pointer instead of trusting
+      // event.resultIndex, which some browsers report inconsistently in
+      // continuous mode — re-reading an index we already appended is what
+      // caused the same word to get typed over and over.
+      const newLines: string[] = [];
+      let i = processedResultCountRef.current;
+      for (; i < event.results.length; i++) {
+        if (!event.results[i].isFinal) break;
+        const transcript = event.results[i][0].transcript.trim();
+        if (transcript) newLines.push(transcript);
       }
-      if (finalTranscript.trim()) {
-        setText((prev) => (prev.trim() ? prev.trim() + "\n" : "") + finalTranscript.trim());
+      processedResultCountRef.current = i;
+
+      if (newLines.length > 0) {
+        setText((prev) => (prev.trim() ? prev.trim() + "\n" : "") + newLines.join("\n"));
       }
     };
     recognition.onend = () => setListening(false);
