@@ -1,0 +1,170 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// SQLite has no native enum support in Prisma, so channel/status/payment
+// fields below are plain strings with values constrained in application
+// code (see apps/api/src/types.ts): Channel = "website" | "whatsapp",
+// OrderStatus = "placed" | "delivered", PaymentMethod = "cod" | "online",
+// PaymentStatus = "pending" | "paid" | "failed".
+
+model Customer {
+  id                 String   @id @default(uuid())
+  phone              String   @unique
+  name               String?
+  whatsappProfileName String?
+  sourceChannel      String   @default("website")
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  addresses Address[]
+  carts     Cart[]
+  orders    Order[]
+  sessions  WhatsAppSession?
+}
+
+model Address {
+  id           String   @id @default(uuid())
+  customerId   String
+  customer     Customer @relation(fields: [customerId], references: [id])
+  label        String   @default("Home")
+  fullAddress  String
+  pincode      String?
+  latitude     Float?
+  longitude    Float?
+  isDefault    Boolean  @default(true)
+  createdAt    DateTime @default(now())
+}
+
+model Category {
+  id             String     @id @default(uuid())
+  name           String
+  slug           String     @unique
+  parentId       String?
+  parent         Category?  @relation("CategoryToSubcategory", fields: [parentId], references: [id])
+  children       Category[] @relation("CategoryToSubcategory")
+  sortOrder      Int        @default(0)
+  isActive       Boolean    @default(true)
+  products       Product[]
+}
+
+model Product {
+  id             String   @id @default(uuid())
+  sku            String   @unique
+  name           String
+  searchKeywords String?  // comma-separated synonyms, e.g. "chini, cheeni, sugar"
+  categoryId     String
+  category       Category @relation(fields: [categoryId], references: [id])
+  unit           String   // kg, gram, litre, ml, piece, packet, dozen
+  packSize       String?  // e.g. "500g", "1kg"
+  priceInPaise   Int
+  mrpInPaise     Int?
+  isLoose        Boolean  @default(false) // sold loose by weight (e.g. atta, chini) instead of a fixed pack
+  minOrderQty    Float?   // minimum/step quantity in kg, only meaningful when isLoose
+  isAvailable    Boolean  @default(true)
+  imageUrl       String?
+  isActive       Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  cartItems  CartItem[]
+  orderItems OrderItem[]
+}
+
+model Cart {
+  id         String     @id @default(uuid())
+  customerId String
+  customer   Customer   @relation(fields: [customerId], references: [id])
+  channel    String
+  status     String     @default("active")
+  createdAt  DateTime   @default(now())
+  updatedAt  DateTime   @updatedAt
+
+  items CartItem[]
+}
+
+model CartItem {
+  id        String  @id @default(uuid())
+  cartId    String
+  cart      Cart    @relation(fields: [cartId], references: [id])
+  productId String
+  product   Product @relation(fields: [productId], references: [id])
+  quantity  Float
+}
+
+model Order {
+  id              String        @id @default(uuid())
+  orderNumber     String        @unique
+  customerId      String
+  customer        Customer      @relation(fields: [customerId], references: [id])
+  channel         String
+  status          String        @default("placed")
+  paymentMethod   String        @default("cod")
+  paymentStatus   String        @default("pending")
+  paymentRef      String?
+  deliveryAddress String
+  subtotalInPaise Int
+  totalInPaise    Int
+  notes           String?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  items         OrderItem[]
+  statusHistory OrderStatusHistory[]
+}
+
+model OrderItem {
+  id                  String  @id @default(uuid())
+  orderId             String
+  order               Order   @relation(fields: [orderId], references: [id])
+  productId           String
+  product             Product @relation(fields: [productId], references: [id])
+  productNameSnapshot String
+  unitPriceSnapshot   Int
+  quantity            Float
+  lineTotalInPaise    Int
+}
+
+model OrderStatusHistory {
+  id        String      @id @default(uuid())
+  orderId   String
+  order     Order       @relation(fields: [orderId], references: [id])
+  status    String
+  changedAt DateTime    @default(now())
+}
+
+model WhatsAppMessageLog {
+  id          String   @id @default(uuid())
+  phone       String
+  direction   String   // "in" | "out"
+  messageType String   // "text" | "notification"
+  payloadText String
+  status      String   // "sent" | "failed" | "queued"
+  createdAt   DateTime @default(now())
+}
+
+model WhatsAppSession {
+  id             String   @id @default(uuid())
+  phone          String   @unique
+  customerId     String?  @unique
+  customer       Customer? @relation(fields: [customerId], references: [id])
+  currentState   String   @default("idle")
+  stateContext   String?  // JSON blob
+  updatedAt      DateTime @updatedAt
+}
+
+model NotificationOutbox {
+  id        String   @id @default(uuid())
+  phone     String
+  orderId   String
+  template  String
+  status    String   @default("pending") // pending | sent | failed
+  attempts  Int      @default(0)
+  createdAt DateTime @default(now())
+  sentAt    DateTime?
+}

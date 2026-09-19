@@ -1,0 +1,16 @@
+{
+  "name": "gupta-general-store",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev:api": "npm run dev -w apps/api",
+    "dev:web": "npm run dev -w apps/web",
+    "dev:bot": "npm run dev -w apps/whatsapp-bot",
+    "db:up": "docker compose up -d db",
+    "db:migrate": "npm run prisma:migrate -w apps/api",
+    "db:seed": "npm run seed -w apps/api"
+  }
+}

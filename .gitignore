@@ -1,0 +1,16 @@
+node_modules/
+dist/
+.next/
+*.tsbuildinfo
+
+# Local SQLite demo database
+apps/api/prisma/dev.db
+apps/api/prisma/dev.db-journal
+
+# WhatsApp session auth (do not commit - lets anyone impersonate the linked number)
+apps/whatsapp-bot/.wwebjs_auth/
+apps/whatsapp-bot/.wwebjs_cache/
+
+# Env files (contain secrets/config, keep local)
+.env
+.env.local
