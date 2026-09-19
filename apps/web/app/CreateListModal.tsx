@@ -53,7 +53,7 @@ export default function CreateListModal({ open, onClose }: { open: boolean; onCl
   const [micSupported, setMicSupported] = useState(false);
   const [micError, setMicError] = useState<string | null>(null);
   const recognitionRef = useRef<any>(null);
-  const processedResultCountRef = useRef(0);
+  const lastFinalTextRef = useRef("");
   const { addItem } = useCart();
 
   useEffect(() => {
@@ -73,30 +73,37 @@ export default function CreateListModal({ open, onClose }: { open: boolean; onCl
     }
 
     setMicError(null);
-    processedResultCountRef.current = 0;
+    lastFinalTextRef.current = "";
     const recognition = new SpeechRecognition();
     recognition.lang = "en-IN";
     recognition.continuous = true;
     recognition.interimResults = true;
     recognition.onresult = (event: any) => {
-      // Each spoken phrase (separated by a pause) becomes its own final
-      // result — put each on its own line so "chini" then "atta" parse as
-      // two separate items instead of getting glued together on one line.
-      // Track our own forward-only pointer instead of trusting
-      // event.resultIndex, which some browsers report inconsistently in
-      // continuous mode — re-reading an index we already appended is what
-      // caused the same word to get typed over and over.
-      const newLines: string[] = [];
-      let i = processedResultCountRef.current;
-      for (; i < event.results.length; i++) {
-        if (!event.results[i].isFinal) break;
-        const transcript = event.results[i][0].transcript.trim();
-        if (transcript) newLines.push(transcript);
+      // In continuous mode, some browsers keep re-finalizing the WHOLE
+      // running sentence so far instead of just the newest word — e.g.
+      // saying "atta", "chini", "dal" one at a time produces final results
+      // "atta", "atta chini", "atta chini dal", not three independent
+      // words. Taking each raw final result as its own line (as before)
+      // printed the whole growing sentence again each time. Instead, diff
+      // the latest final transcript against what we've already shown and
+      // only add the new suffix as a line.
+      let latestFinal: string | null = null;
+      for (let i = event.results.length - 1; i >= 0; i--) {
+        if (event.results[i].isFinal) {
+          latestFinal = event.results[i][0].transcript.trim();
+          break;
+        }
       }
-      processedResultCountRef.current = i;
+      if (!latestFinal) return;
 
-      if (newLines.length > 0) {
-        setText((prev) => (prev.trim() ? prev.trim() + "\n" : "") + newLines.join("\n"));
+      const prev = lastFinalTextRef.current;
+      const delta = prev && latestFinal.toLowerCase().startsWith(prev.toLowerCase())
+        ? latestFinal.slice(prev.length).trim()
+        : latestFinal;
+      lastFinalTextRef.current = latestFinal;
+
+      if (delta) {
+        setText((prevText) => (prevText.trim() ? prevText.trim() + "\n" : "") + delta);
       }
     };
     recognition.onend = () => setListening(false);
